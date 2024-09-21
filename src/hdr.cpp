@@ -86,6 +86,10 @@ int main()
     Shader shader("src/6.lighting.vs", "src/6.lighting.fs");
     Shader hdrShader("src/6.hdr.vs", "src/6.hdr.fs");
 
+    // load models
+    // -----------
+    //Model ourModel("resources/models/untitled.obj");
+    
     // load textures
     // -------------
     unsigned int woodTexture = loadTexture(filesystem::path("resources/textures/wood.png").string().c_str(), true); // note that we're loading the texture as an SRGB texture
@@ -178,6 +182,7 @@ int main()
         model = glm::scale(model, glm::vec3(2.5f, 2.5f, 27.5f));
         shader.setMat4("model", model);
         shader.setInt("inverse_normals", true);
+        //ourModel.Draw(shader);
         renderCube();
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 

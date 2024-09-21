@@ -11,6 +11,7 @@
             "${workspaceFolder}/src/hdr.cpp",
             "${workspaceFolder}/src/glad.c",
             "-lglfw3dll",
+            "-lassimp",
             "-o",
             "${workspaceFolder}\\${fileBasenameNoExtension}.exe",
         ],
