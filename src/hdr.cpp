@@ -83,13 +83,12 @@ int main()
 
     // build and compile shaders
     // -------------------------
-    Shader shader("6.lighting.vs", "6.lighting.fs");
-    Shader hdrShader("6.hdr.vs", "6.hdr.fs");
+    Shader shader("src/6.lighting.vs", "src/6.lighting.fs");
+    Shader hdrShader("src/6.hdr.vs", "src/6.hdr.fs");
 
     // load textures
     // -------------
     unsigned int woodTexture = loadTexture(filesystem::path("resources/textures/wood.png").string().c_str(), true); // note that we're loading the texture as an SRGB texture
-
     // configure floating point framebuffer
     // ------------------------------------
     unsigned int hdrFBO;
