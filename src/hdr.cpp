@@ -13,6 +13,7 @@
 
 #include <iostream>
 #include <filesystem>
+#include <cmath>
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
@@ -22,23 +23,36 @@ unsigned int loadTexture(const char *path, bool gammaCorrection);
 unsigned int loadCubemap(vector<std::string> faces);
 void renderQuad();
 void renderCube();
+float calculateAverageLuminance(float* imageData, int width, int height);
+float updateExposure(float maxChange = 0.001f);
 
 // settings
 const unsigned int SCR_WIDTH = 1200;
 const unsigned int SCR_HEIGHT = 800;
 bool hdr = true;
 bool hdrKeyPressed = false;
-float exposure = 1.0f;
+
+// timing
+float deltaTime = 0.0f;
+float lastFrame = 0.0f;
+
+float exposure = 0.0f;
+float avgLuminance;  // Calculated from luminance shader
+
+// Target luminance (can be a desired exposure level)
+float minLuminance = 0.1f;
+float maxLuminance = 0.4f;
+float minExposure = 1.0f;
+float maxExposure = 6.0f;
+
+// Smoothly adapt exposure (adjust speed as needed)
+float adaptationSpeed = 0.3f;
 
 // camera
 Camera camera(glm::vec3(0.0f, 0.0f, 5.0f));
 float lastX = (float)SCR_WIDTH / 2.0;
 float lastY = (float)SCR_HEIGHT / 2.0;
 bool firstMouse = true;
-
-// timing
-float deltaTime = 0.0f;
-float lastFrame = 0.0f;
 
 int main()
 {
@@ -86,6 +100,7 @@ int main()
     // -------------------------
     Shader lightingShader("src/lightingVS.txt", "src/lightingFS.txt");
     Shader skyboxShader("src/skyboxVS.txt", "src/skyboxFS.txt");
+    Shader luminanceShader("src/luminanceVS.txt","src/luminanceFS.txt");
     Shader hdrShader("src/reinhardHDRVS.txt", "src/reinhardHDRFS.txt");
 
     float skyboxVertices[] = {
@@ -178,21 +193,54 @@ int main()
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         std::cout << "Framebuffer not complete!" << std::endl;
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    
+
+    // Setup a framebuffer for luminance extraction
+    unsigned int luminanceFBO;
+    glGenFramebuffers(1, &luminanceFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, luminanceFBO);
+
+    // Setup texture to store luminance
+    unsigned int luminanceTexture;
+    glGenTextures(1, &luminanceTexture);
+    glBindTexture(GL_TEXTURE_2D, luminanceTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RED, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, luminanceTexture, 0);
+
+    // Check framebuffer completeness
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "Luminance framebuffer not complete!" << std::endl;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
     // lighting info
     // -------------
     // positions
     std::vector<glm::vec3> lightPositions;
-    lightPositions.push_back(glm::vec3( 0.0f,  0.0f, 49.5f)); // back light
-    lightPositions.push_back(glm::vec3( 2.0f, 0.0f, 15.0f));
-    lightPositions.push_back(glm::vec3( 0.0f, -2.0f, 15.0f));
-    lightPositions.push_back(glm::vec3( -2.0f, 0.0f, 15.0f));
+    lightPositions.push_back(glm::vec3( 49.5f,  49.5f, -255.5f)); // sun
+    lightPositions.push_back(glm::vec3( 0.0f, 0.0f, -40.5f));
+    lightPositions.push_back(glm::vec3( 2.5f, 0.0f, -22.5f));
+    lightPositions.push_back(glm::vec3( 0.0f, -2.5f, -22.5f));
+    lightPositions.push_back(glm::vec3( -2.5f, 0.0f, -22.5f));
+    lightPositions.push_back(glm::vec3( 2.5f, 0.0f, -15.0f));
+    lightPositions.push_back(glm::vec3( 0.0f, -2.5f, -15.0f));
+    lightPositions.push_back(glm::vec3( -2.5f, 0.0f, -15.0f));
+    lightPositions.push_back(glm::vec3( 2.5f, 0.0f, -7.5f));
+    lightPositions.push_back(glm::vec3( 0.0f, -2.5f, -7.5f));
+    lightPositions.push_back(glm::vec3( -2.5f, 0.0f, -7.5f));
     // colors
     std::vector<glm::vec3> lightColors;
     lightColors.push_back(glm::vec3(200.0f, 200.0f, 200.0f));
-    lightColors.push_back(glm::vec3(0.4f, 0.0f, 0.0f));
-    lightColors.push_back(glm::vec3(0.0f, 0.4f, 0.0f));
-    lightColors.push_back(glm::vec3(0.0f, 0.0f, 0.4f));
+    lightColors.push_back(glm::vec3(50.0f, 50.0f, 50.0f));
+    lightColors.push_back(glm::vec3(1.0f, 0.0f, 0.0f));
+    lightColors.push_back(glm::vec3(0.0f, 1.0f, 0.0f));
+    lightColors.push_back(glm::vec3(0.0f, 0.0f, 1.0f));
+    lightColors.push_back(glm::vec3(1.0f, 0.0f, 0.0f));
+    lightColors.push_back(glm::vec3(0.0f, 1.0f, 0.0f));
+    lightColors.push_back(glm::vec3(0.0f, 0.0f, 1.0f));
+    lightColors.push_back(glm::vec3(1.0f, 0.0f, 0.0f));
+    lightColors.push_back(glm::vec3(0.0f, 1.0f, 0.0f));
+    lightColors.push_back(glm::vec3(0.0f, 0.0f, 1.0f));
 
     // shader configuration
     // --------------------
@@ -203,6 +251,7 @@ int main()
     skyboxShader.use();
     skyboxShader.setInt("skybox", 0);
 
+    float* imageData = new float[SCR_WIDTH * SCR_HEIGHT * 3];
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
@@ -242,8 +291,8 @@ int main()
         lightingShader.setVec3("viewPos", camera.Position);
         // render tunnel
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, 0.0f, 25.0));
-        model = glm::scale(model, glm::vec3(2.5f, 2.5f, 27.5f));
+        model = glm::translate(model, glm::vec3(0.0f, 0.0f, -15.0));
+        model = glm::scale(model, glm::vec3(3.0f, 3.0f, 27.5f));
         lightingShader.setMat4("model", model);
         lightingShader.setInt("inverse_normals", true);
         renderCube();
@@ -259,8 +308,14 @@ int main()
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glBindVertexArray(0);
         glDepthFunc(GL_LESS);
+        glReadBuffer(GL_BACK);
+        glReadPixels(0, 0, SCR_WIDTH, SCR_HEIGHT, GL_RGB, GL_FLOAT, imageData);  
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+        // Step 3: Calculate the average luminance
+        avgLuminance = calculateAverageLuminance(imageData,SCR_WIDTH,SCR_HEIGHT);
+        // Step 4: Adjust exposure based on average luminance
+        exposure = updateExposure();
         // 2. now render floating point color buffer to 2D quad and tonemap HDR colors to default framebuffer's (clamped) color range
         // --------------------------------------------------------------------------------------------------------------------------
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -270,7 +325,6 @@ int main()
         hdrShader.setInt("hdr", hdr);
         hdrShader.setFloat("exposure", exposure);
         renderQuad();
-
         std::cout << "hdr: " << (hdr ? "on" : "off") << "| exposure: " << exposure << std::endl;
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -292,21 +346,21 @@ void renderCube()
     if (cubeVAO == 0)
     {
         float vertices[] = {
-            // back face
+            /*// back face
             -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
              1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
              1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 0.0f, // bottom-right         
              1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
             -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
             -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 1.0f, // top-left
-            /*// front face
+            */// front face
             -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
              1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 0.0f, // bottom-right
              1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
              1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
             -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 1.0f, // top-left
             -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
-            */// left face
+            // left face
             -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
             -1.0f,  1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-left
             -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
@@ -542,4 +596,49 @@ unsigned int loadCubemap(vector<std::string> faces)
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
     return textureID;
+}
+
+float calculateAverageLuminance(float* imageData, int width, int height) {
+    float totalLuminance = 0.0f;
+    for (int i = 0; i < width * height * 3; i += 3) {
+        float r = imageData[i];
+        float g = imageData[i + 1];
+        float b = imageData[i + 2];
+        // Calcola la luminanza utilizzando la formula percettiva
+        float luminance = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+        totalLuminance += luminance;
+    }
+    return totalLuminance / (width * height);
+}
+
+float updateExposure(float maxChange){
+    // Il target può essere il valore ideale di esposizione che si desidera
+    float targetExposure = 2.0f;
+    // Se la luminosità media è inferiore al range ideale (scena troppo buia)
+    if (avgLuminance < minLuminance) {
+        // Aumenta l'esposizione in modo non lineare: più è buio, più l'esposizione aumenta
+        targetExposure = pow(minLuminance / avgLuminance, 1.0f); // Il valore 1.5 regola la sensibilità
+    }
+    // Se la luminosità media è superiore al range ideale (scena troppo luminosa)
+    else if (avgLuminance > maxLuminance) {
+        // Riduci l'esposizione in modo non lineare: più è luminosa la scena, più riduci l'esposizione
+        targetExposure = pow(maxLuminance / avgLuminance, 1.0f);
+    }
+
+    float exposureChange = (targetExposure - exposure) * adaptationSpeed * deltaTime;
+
+    // Limita l'esposizione per evitare valori estremi
+    if (fabs(exposureChange) > maxChange) {
+        // Se la differenza è maggiore del cambiamento massimo consentito
+        if (exposureChange > 0) {
+            exposureChange = maxChange;
+        } else {
+            exposureChange = -maxChange;
+        }
+    }
+
+    exposure += exposureChange;
+    exposure = clamp(exposure, minExposure, maxExposure);
+
+    return exposure;
 }
