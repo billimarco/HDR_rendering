@@ -26,17 +26,25 @@ void renderCube();
 float calculateAverageLuminance(float* imageData, int width, int height);
 float updateExposure(float maxChange = 0.001f);
 
+enum IlluminationType {
+  NO_HDR = 0,
+  REINHARD_HDR = 1,
+  EXPOSURE_HDR = 2
+};
+
 // settings
 const unsigned int SCR_WIDTH = 1200;
 const unsigned int SCR_HEIGHT = 800;
-bool hdr = true;
-bool hdrKeyPressed = false;
+enum IlluminationType hdr = NO_HDR;
+bool illuminationChangeKeyPressed = false;
+bool dynamicExposure = true;
+bool dynamicExposureKeyPressed = false;
 
 // timing
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-float exposure = 0.0f;
+float exposure = 1.0f;
 float avgLuminance;  // Calculated from luminance shader
 
 // Target luminance (can be a desired exposure level)
@@ -100,8 +108,7 @@ int main()
     // -------------------------
     Shader lightingShader("src/lightingVS.txt", "src/lightingFS.txt");
     Shader skyboxShader("src/skyboxVS.txt", "src/skyboxFS.txt");
-    Shader luminanceShader("src/luminanceVS.txt","src/luminanceFS.txt");
-    Shader hdrShader("src/reinhardHDRVS.txt", "src/reinhardHDRFS.txt");
+    Shader hdrShader("src/hdrVS.txt", "src/hdrFS.txt");
 
     float skyboxVertices[] = {
         // positions          
@@ -222,25 +229,31 @@ int main()
     lightPositions.push_back(glm::vec3( 2.5f, 0.0f, -22.5f));
     lightPositions.push_back(glm::vec3( 0.0f, -2.5f, -22.5f));
     lightPositions.push_back(glm::vec3( -2.5f, 0.0f, -22.5f));
+    lightPositions.push_back(glm::vec3( 0.0f, 2.5f, -22.5f));
     lightPositions.push_back(glm::vec3( 2.5f, 0.0f, -15.0f));
     lightPositions.push_back(glm::vec3( 0.0f, -2.5f, -15.0f));
     lightPositions.push_back(glm::vec3( -2.5f, 0.0f, -15.0f));
+    lightPositions.push_back(glm::vec3( 0.0f, 2.5f, -15.0f));
     lightPositions.push_back(glm::vec3( 2.5f, 0.0f, -7.5f));
     lightPositions.push_back(glm::vec3( 0.0f, -2.5f, -7.5f));
     lightPositions.push_back(glm::vec3( -2.5f, 0.0f, -7.5f));
+    lightPositions.push_back(glm::vec3( 0.0f, 2.5f, -7.5f));
     // colors
     std::vector<glm::vec3> lightColors;
     lightColors.push_back(glm::vec3(200.0f, 200.0f, 200.0f));
-    lightColors.push_back(glm::vec3(50.0f, 50.0f, 50.0f));
+    lightColors.push_back(glm::vec3(160.0f, 160.0f, 135.0f));
     lightColors.push_back(glm::vec3(1.0f, 0.0f, 0.0f));
     lightColors.push_back(glm::vec3(0.0f, 1.0f, 0.0f));
     lightColors.push_back(glm::vec3(0.0f, 0.0f, 1.0f));
+    lightColors.push_back(glm::vec3(1.0f, 1.0f, 0.0f));
     lightColors.push_back(glm::vec3(1.0f, 0.0f, 0.0f));
     lightColors.push_back(glm::vec3(0.0f, 1.0f, 0.0f));
     lightColors.push_back(glm::vec3(0.0f, 0.0f, 1.0f));
+    lightColors.push_back(glm::vec3(1.0f, 1.0f, 0.0f));
     lightColors.push_back(glm::vec3(1.0f, 0.0f, 0.0f));
     lightColors.push_back(glm::vec3(0.0f, 1.0f, 0.0f));
     lightColors.push_back(glm::vec3(0.0f, 0.0f, 1.0f));
+    lightColors.push_back(glm::vec3(1.0f, 1.0f, 0.0f));
 
     // shader configuration
     // --------------------
@@ -312,10 +325,10 @@ int main()
         glReadPixels(0, 0, SCR_WIDTH, SCR_HEIGHT, GL_RGB, GL_FLOAT, imageData);  
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        // Step 3: Calculate the average luminance
-        avgLuminance = calculateAverageLuminance(imageData,SCR_WIDTH,SCR_HEIGHT);
-        // Step 4: Adjust exposure based on average luminance
-        exposure = updateExposure();
+        if(dynamicExposure){
+            avgLuminance = calculateAverageLuminance(imageData,SCR_WIDTH,SCR_HEIGHT);
+            exposure = updateExposure();
+        }
         // 2. now render floating point color buffer to 2D quad and tonemap HDR colors to default framebuffer's (clamped) color range
         // --------------------------------------------------------------------------------------------------------------------------
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -325,7 +338,7 @@ int main()
         hdrShader.setInt("hdr", hdr);
         hdrShader.setFloat("exposure", exposure);
         renderQuad();
-        std::cout << "hdr: " << (hdr ? "on" : "off") << "| exposure: " << exposure << std::endl;
+        std::cout << "hdr: " << hdr << "| dynamicExp: " << (dynamicExposure ? "on" : "off") << "| exposure: " << exposure << std::endl;
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
         glfwSwapBuffers(window);
@@ -459,14 +472,37 @@ void processInput(GLFWwindow *window)
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         camera.ProcessKeyboard(RIGHT, deltaTime);
 
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !hdrKeyPressed)
+    if (glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS && !illuminationChangeKeyPressed)
     {
-        hdr = !hdr;
-        hdrKeyPressed = true;
+        hdr = NO_HDR;
+        illuminationChangeKeyPressed = true;
     }
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE)
+
+    if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS && !illuminationChangeKeyPressed)
     {
-        hdrKeyPressed = false;
+        hdr = REINHARD_HDR;
+        illuminationChangeKeyPressed = true;
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS && !illuminationChangeKeyPressed)
+    {
+        hdr = EXPOSURE_HDR;
+        illuminationChangeKeyPressed = true;
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_0) == GLFW_RELEASE || glfwGetKey(window, GLFW_KEY_1) == GLFW_RELEASE || glfwGetKey(window, GLFW_KEY_2) == GLFW_RELEASE)
+    {
+        illuminationChangeKeyPressed = false;
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && !dynamicExposureKeyPressed)
+    {
+        dynamicExposure = !dynamicExposure;
+        dynamicExposureKeyPressed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_RELEASE)
+    {
+        dynamicExposureKeyPressed = false;
     }
 
     if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
@@ -617,12 +653,12 @@ float updateExposure(float maxChange){
     // Se la luminosità media è inferiore al range ideale (scena troppo buia)
     if (avgLuminance < minLuminance) {
         // Aumenta l'esposizione in modo non lineare: più è buio, più l'esposizione aumenta
-        targetExposure = pow(minLuminance / avgLuminance, 1.0f); // Il valore 1.5 regola la sensibilità
+        targetExposure = pow(minLuminance / avgLuminance, 1.5f); // Il valore 1.5 regola la sensibilità
     }
     // Se la luminosità media è superiore al range ideale (scena troppo luminosa)
     else if (avgLuminance > maxLuminance) {
         // Riduci l'esposizione in modo non lineare: più è luminosa la scena, più riduci l'esposizione
-        targetExposure = pow(maxLuminance / avgLuminance, 1.0f);
+        targetExposure = pow(maxLuminance / avgLuminance, 1.5f);
     }
 
     float exposureChange = (targetExposure - exposure) * adaptationSpeed * deltaTime;
