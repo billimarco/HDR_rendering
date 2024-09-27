@@ -495,12 +495,12 @@ void processInput(GLFWwindow *window)
         illuminationChangeKeyPressed = false;
     }
 
-    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && !dynamicExposureKeyPressed)
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !dynamicExposureKeyPressed)
     {
         dynamicExposure = !dynamicExposure;
         dynamicExposureKeyPressed = true;
     }
-    if (glfwGetKey(window, GLFW_KEY_R) == GLFW_RELEASE)
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE)
     {
         dynamicExposureKeyPressed = false;
     }
