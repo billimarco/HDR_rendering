@@ -1,7 +1,14 @@
 #define STB_IMAGE_IMPLEMENTATIONS
+
+#include <iostream>
+#include <filesystem>
+#include <cmath>
+#include <fstream>
+
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <stb/stb_image.h>
+#include <nlohmann/json.hpp>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -11,20 +18,7 @@
 #include <camera.h>
 #include <model.h>
 
-#include <iostream>
-#include <filesystem>
-#include <cmath>
-
-void framebuffer_size_callback(GLFWwindow* window, int width, int height);
-void mouse_callback(GLFWwindow* window, double xpos, double ypos);
-void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
-void processInput(GLFWwindow *window);
-unsigned int loadTexture(const char *path, bool gammaCorrection);
-unsigned int loadCubemap(vector<std::string> faces);
-void renderQuad();
-void renderCube();
-float calculateAverageLuminance(float* imageData, int width, int height);
-float updateExposure(float maxChange = 0.001f);
+using json = nlohmann::json;
 
 enum IlluminationType {
   NO_HDR = 0,
@@ -32,35 +26,48 @@ enum IlluminationType {
   EXPOSURE_HDR = 2
 };
 
-// settings
-const unsigned int SCR_WIDTH = 1200;
-const unsigned int SCR_HEIGHT = 800;
-enum IlluminationType hdr = EXPOSURE_HDR;
-bool illuminationChangeKeyPressed = false;
-bool dynamicExposure = true;
-bool dynamicExposureKeyPressed = false;
+struct Illumination{
+    float exposure;
+    enum IlluminationType hdr;
+    bool dynamicExposure;
+    float adaptationSpeed;
+    float maxChange;
 
-// timing
+    float avgLuminance;
+    float minLuminance;
+    float maxLuminance;
+    
+    float minExposure;
+    float maxExposure;
+};
+
+void framebuffer_size_callback(GLFWwindow* window, int width, int height);
+void mouse_callback(GLFWwindow* window, double xposIn, double yposIn);
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+void processWindowInput(GLFWwindow *window);
+void processIlluminationInput(GLFWwindow* window, Illumination* illum, bool* illuminationChangeKeyPressed, bool* dynamicExposureKeyPressed);
+unsigned int loadTexture(const char *path, bool gammaCorrection);
+unsigned int loadCubemapSkybox(vector<std::string> faces);
+float calculateAverageLuminance(float* imageData, int width, int height);
+void updateExposure(Illumination* illum);
+
+// fa il parse del file json in ingresso e ottengo una struttura simile ad un dizionario con tutti i valori del file di config
+std::ifstream conf_file("settings/config.json");
+json config = json::parse(conf_file);
+
+// SCREEN SETTINGS
+unsigned int win_width = config["window"]["width"];
+unsigned int win_height = config["window"]["height"];
+
+// CAMERA SETTINGS
+Camera camera(glm::vec3(config["camera"]["x"], config["camera"]["y"], config["camera"]["z"]));
+float lastX = (float)win_width / 2.0;
+float lastY = (float)win_height / 2.0;
+bool firstMouse = true;
+
+// TIMING VARIABLES
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
-
-float exposure = 1.0f;
-float avgLuminance;  // Calculated from luminance shader
-
-// Target luminance (can be a desired exposure level)
-float minLuminance = 0.1f;
-float maxLuminance = 0.4f;
-float minExposure = 1.0f;
-float maxExposure = 6.0f;
-
-// Smoothly adapt exposure (adjust speed as needed)
-float adaptationSpeed = 0.3f;
-
-// camera
-Camera camera(glm::vec3(0.0f, 0.0f, 5.0f));
-float lastX = (float)SCR_WIDTH / 2.0;
-float lastY = (float)SCR_HEIGHT / 2.0;
-bool firstMouse = true;
 
 int main()
 {
@@ -75,9 +82,23 @@ int main()
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     #endif
 
+    //ILLUMINATION SETTINGS
+    Illumination illum_settings;
+    illum_settings.hdr = config["illumination"]["type"];
+    illum_settings.dynamicExposure = config["illumination"]["dynamic_exp"];
+    illum_settings.exposure = config["illumination"]["exposure"];
+    illum_settings.minLuminance = config["illumination"]["min_luminance"];
+    illum_settings.maxLuminance = config["illumination"]["max_luminance"];
+    illum_settings.minExposure = config["illumination"]["min_exposure"];
+    illum_settings.maxExposure = config["illumination"]["max_exposure"];
+    illum_settings.adaptationSpeed = config["illumination"]["adaptation_speed"];// Smoothly adapt exposure (adjust speed as needed)
+    illum_settings.maxChange = config["illumination"]["max_change"];
+    bool illuminationChangeKeyPressed = false;
+    bool dynamicExposureKeyPressed = false;
+
     // glfw window creation
     // --------------------
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "LearnOpenGL", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(win_width, win_height, "HDR_rendering_Elaborato", NULL, NULL);
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -106,9 +127,9 @@ int main()
 
     // build and compile shaders
     // -------------------------
-    Shader lightingShader("src/lightingVS.txt", "src/lightingFS.txt");
-    Shader skyboxShader("src/skyboxVS.txt", "src/skyboxFS.txt");
-    Shader hdrShader("src/hdrVS.txt", "src/hdrFS.txt");
+    Shader lightingShader("shader/lightingVS.txt", "shader/lightingFS.txt");
+    Shader skyboxShader("shader/skyboxVS.txt", "shader/skyboxFS.txt");
+    Shader hdrShader("shader/hdrVS.txt", "shader/hdrFS.txt");
 
     float skyboxVertices[] = {
         // positions          
@@ -154,7 +175,6 @@ int main()
         -1.0f, -1.0f,  1.0f,
         1.0f, -1.0f,  1.0f
     };
-
     // skybox VAO
     unsigned int skyboxVAO, skyboxVBO;
     glGenVertexArrays(1, &skyboxVAO);
@@ -165,10 +185,95 @@ int main()
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
+    unsigned int cubeVAO;
+    unsigned int cubeVBO;
+    float vertices[] = {
+        /*// back face
+        -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
+        1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
+        1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 0.0f, // bottom-right         
+        1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
+        -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
+        -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 1.0f, // top-left
+        */// front face
+        -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
+        1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 0.0f, // bottom-right
+        1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
+        1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
+        -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 1.0f, // top-left
+        -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
+        // left face
+        -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
+        -1.0f,  1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-left
+        -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
+        -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
+        -1.0f, -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-right
+        -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
+        // right face
+        1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
+        1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
+        1.0f,  1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-right         
+        1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
+        1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
+        1.0f, -1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-left     
+        // bottom face
+        -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
+        1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 1.0f, // top-left
+        1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
+        1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
+        -1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 0.0f, // bottom-right
+        -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
+        // top face
+        -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
+        1.0f,  1.0f , 1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
+        1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 1.0f, // top-right     
+        1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
+        -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
+        -1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 0.0f  // bottom-left 
+            
+    };
+    glGenVertexArrays(1, &cubeVAO);
+    glGenBuffers(1, &cubeVBO);
+    // fill buffer
+    glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    // link vertex attributes
+    glBindVertexArray(cubeVAO);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    unsigned int quadVAO = 0;
+    unsigned int quadVBO;
+    float quadVertices[] = {
+        // positions        // texture Coords
+        -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+        -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+        1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+        1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+    };
+    // setup plane VAO
+    glGenVertexArrays(1, &quadVAO);
+    glGenBuffers(1, &quadVBO);
+    glBindVertexArray(quadVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
     // load textures
     // -------------
-    unsigned int woodTexture = loadTexture(filesystem::path("resources/textures/container.png").string().c_str(), true); // note that we're loading the texture as an SRGB texture
-    vector<std::string> faces{
+    unsigned int containerTexture = loadTexture(filesystem::path("resources/textures/container.png").string().c_str(), true); // note that we're loading the texture as an SRGB texture
+    vector<std::string> skyboxFaces{
         filesystem::path("resources/skybox/right.jpg").string(),
         filesystem::path("resources/skybox/left.jpg").string(),
         filesystem::path("resources/skybox/top.jpg").string(),
@@ -176,7 +281,7 @@ int main()
         filesystem::path("resources/skybox/front.jpg").string(),
         filesystem::path("resources/skybox/back.jpg").string(),
     };
-    unsigned int cubemapTexture = loadCubemap(faces);
+    unsigned int skyboxTexture = loadCubemapSkybox(skyboxFaces);
     // configure floating point framebuffer
     // ------------------------------------
     unsigned int hdrFBO;
@@ -185,39 +290,20 @@ int main()
     unsigned int colorBuffer;
     glGenTextures(1, &colorBuffer);
     glBindTexture(GL_TEXTURE_2D, colorBuffer);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, win_width, win_height, 0, GL_RGBA, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     // create depth buffer (renderbuffer)
     unsigned int rboDepth;
     glGenRenderbuffers(1, &rboDepth);
     glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, win_width, win_height);
     // attach buffers
     glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorBuffer, 0);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         std::cout << "Framebuffer not complete!" << std::endl;
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    // Setup a framebuffer for luminance extraction
-    unsigned int luminanceFBO;
-    glGenFramebuffers(1, &luminanceFBO);
-    glBindFramebuffer(GL_FRAMEBUFFER, luminanceFBO);
-
-    // Setup texture to store luminance
-    unsigned int luminanceTexture;
-    glGenTextures(1, &luminanceTexture);
-    glBindTexture(GL_TEXTURE_2D, luminanceTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RED, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, luminanceTexture, 0);
-
-    // Check framebuffer completeness
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        std::cout << "Luminance framebuffer not complete!" << std::endl;
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     // lighting info
@@ -264,7 +350,7 @@ int main()
     skyboxShader.use();
     skyboxShader.setInt("skybox", 0);
 
-    float* imageData = new float[SCR_WIDTH * SCR_HEIGHT * 3];
+    float* imageData = new float[win_width * win_height * 3];
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
@@ -277,7 +363,8 @@ int main()
 
         // input
         // -----
-        processInput(window);
+        processWindowInput(window);
+        processIlluminationInput(window, &illum_settings, &illuminationChangeKeyPressed, &dynamicExposureKeyPressed);
 
         // render
         // ------
@@ -288,13 +375,13 @@ int main()
         // -----------------------------------------------
         glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (GLfloat)SCR_WIDTH / (GLfloat)SCR_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (GLfloat)win_width / (GLfloat)win_height, 0.1f, 100.0f);
         glm::mat4 view = camera.GetViewMatrix();
         lightingShader.use();
         lightingShader.setMat4("projection", projection);
         lightingShader.setMat4("view", view);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, woodTexture);
+        glBindTexture(GL_TEXTURE_2D, containerTexture);
         // set lighting uniforms
         for (unsigned int i = 0; i < lightPositions.size(); i++)
         {
@@ -308,7 +395,9 @@ int main()
         model = glm::scale(model, glm::vec3(3.0f, 3.0f, 27.5f));
         lightingShader.setMat4("model", model);
         lightingShader.setInt("inverse_normals", true);
-        renderCube();
+        glBindVertexArray(cubeVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 30);
+        glBindVertexArray(0);
 
         glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
         skyboxShader.use();
@@ -317,17 +406,17 @@ int main()
         skyboxShader.setMat4("projection", projection);
         glBindVertexArray(skyboxVAO);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glBindVertexArray(0);
         glDepthFunc(GL_LESS);
         glReadBuffer(GL_BACK);
-        glReadPixels(0, 0, SCR_WIDTH, SCR_HEIGHT, GL_RGB, GL_FLOAT, imageData);  
+        glReadPixels(0, 0, win_width, win_height, GL_RGB, GL_FLOAT, imageData);  
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        if(dynamicExposure){
-            avgLuminance = calculateAverageLuminance(imageData,SCR_WIDTH,SCR_HEIGHT);
-            exposure = updateExposure();
+        if(illum_settings.dynamicExposure){
+            illum_settings.avgLuminance = calculateAverageLuminance(imageData,win_width,win_height);
+            updateExposure(&illum_settings);
         }
         // 2. now render floating point color buffer to 2D quad and tonemap HDR colors to default framebuffer's (clamped) color range
         // --------------------------------------------------------------------------------------------------------------------------
@@ -335,10 +424,12 @@ int main()
         hdrShader.use();
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, colorBuffer);
-        hdrShader.setInt("hdr", hdr);
-        hdrShader.setFloat("exposure", exposure);
-        renderQuad();
-        std::cout << "hdr: " << hdr << "| dynamicExp: " << (dynamicExposure ? "on" : "off") << "| exposure: " << exposure << std::endl;
+        hdrShader.setInt("hdr", illum_settings.hdr);
+        hdrShader.setFloat("exposure", illum_settings.exposure);
+        glBindVertexArray(quadVAO);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glBindVertexArray(0);
+        std::cout << "hdr: " << illum_settings.hdr << "| dynamicExp: " << (illum_settings.dynamicExposure ? "on" : "off") << "| exposure: " << illum_settings.exposure << std::endl;
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
         glfwSwapBuffers(window);
@@ -349,172 +440,68 @@ int main()
     return 0;
 }
 
-// renderCube() renders a 1x1 3D cube in NDC.
-// -------------------------------------------------
-unsigned int cubeVAO = 0;
-unsigned int cubeVBO = 0;
-void renderCube()
-{
-    // initialize (if necessary)
-    if (cubeVAO == 0)
-    {
-        float vertices[] = {
-            /*// back face
-            -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
-             1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
-             1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 0.0f, // bottom-right         
-             1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
-            -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
-            -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 1.0f, // top-left
-            */// front face
-            -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
-             1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 0.0f, // bottom-right
-             1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
-             1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
-            -1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 1.0f, // top-left
-            -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
-            // left face
-            -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
-            -1.0f,  1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-left
-            -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
-            -1.0f, -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-left
-            -1.0f, -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-right
-            -1.0f,  1.0f,  1.0f, -1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-right
-            // right face
-             1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
-             1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
-             1.0f,  1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 1.0f, // top-right         
-             1.0f, -1.0f, -1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 1.0f, // bottom-right
-             1.0f,  1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 1.0f, 0.0f, // top-left
-             1.0f, -1.0f,  1.0f,  1.0f,  0.0f,  0.0f, 0.0f, 0.0f, // bottom-left     
-            // bottom face
-            -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
-             1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 1.0f, // top-left
-             1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
-             1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 1.0f, 0.0f, // bottom-left
-            -1.0f, -1.0f,  1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 0.0f, // bottom-right
-            -1.0f, -1.0f, -1.0f,  0.0f, -1.0f,  0.0f, 0.0f, 1.0f, // top-right
-            // top face
-            -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
-             1.0f,  1.0f , 1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
-             1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 1.0f, // top-right     
-             1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 1.0f, 0.0f, // bottom-right
-            -1.0f,  1.0f, -1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 1.0f, // top-left
-            -1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 0.0f  // bottom-left 
-                   
-        };
-        glGenVertexArrays(1, &cubeVAO);
-        glGenBuffers(1, &cubeVBO);
-        // fill buffer
-        glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-        // link vertex attributes
-        glBindVertexArray(cubeVAO);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        glBindVertexArray(0);
-    }
-    // render Cube
-    glBindVertexArray(cubeVAO);
-    glDrawArrays(GL_TRIANGLES, 0, 30);
-    glBindVertexArray(0);
-}
-
-// renderQuad() renders a 1x1 XY quad in NDC
-// -----------------------------------------
-unsigned int quadVAO = 0;
-unsigned int quadVBO;
-void renderQuad()
-{
-    if (quadVAO == 0)
-    {
-        float quadVertices[] = {
-            // positions        // texture Coords
-            -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
-            -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-             1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-             1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
-        };
-        // setup plane VAO
-        glGenVertexArrays(1, &quadVAO);
-        glGenBuffers(1, &quadVBO);
-        glBindVertexArray(quadVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-    }
-    glBindVertexArray(quadVAO);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    glBindVertexArray(0);
-}
-
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------
-void processInput(GLFWwindow *window)
+void processWindowInput(GLFWwindow* window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         camera.ProcessKeyboard(FORWARD, deltaTime);
+
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
         camera.ProcessKeyboard(BACKWARD, deltaTime);
+
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
         camera.ProcessKeyboard(LEFT, deltaTime);
+
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         camera.ProcessKeyboard(RIGHT, deltaTime);
+}
 
-    if (glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS && !illuminationChangeKeyPressed)
+void processIlluminationInput(GLFWwindow* window, Illumination* illum, bool* illuminationChangeKeyPressed, bool* dynamicExposureKeyPressed)
+{
+    if (glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS && !(*illuminationChangeKeyPressed))
     {
-        hdr = NO_HDR;
-        illuminationChangeKeyPressed = true;
+        (*illum).hdr = NO_HDR;
+        *illuminationChangeKeyPressed = true;
     }
-
-    if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS && !illuminationChangeKeyPressed)
+    if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS && !(*illuminationChangeKeyPressed))
     {
-        hdr = REINHARD_HDR;
-        illuminationChangeKeyPressed = true;
+        (*illum).hdr = REINHARD_HDR;
+        *illuminationChangeKeyPressed = true;
     }
-
-    if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS && !illuminationChangeKeyPressed)
+    if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS && !(*illuminationChangeKeyPressed))
     {
-        hdr = EXPOSURE_HDR;
-        illuminationChangeKeyPressed = true;
+        (*illum).hdr = EXPOSURE_HDR;
+        *illuminationChangeKeyPressed = true;
     }
-
     if (glfwGetKey(window, GLFW_KEY_0) == GLFW_RELEASE || glfwGetKey(window, GLFW_KEY_1) == GLFW_RELEASE || glfwGetKey(window, GLFW_KEY_2) == GLFW_RELEASE)
     {
-        illuminationChangeKeyPressed = false;
+        *illuminationChangeKeyPressed = false;
     }
 
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !dynamicExposureKeyPressed)
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !(*dynamicExposureKeyPressed))
     {
-        dynamicExposure = !dynamicExposure;
-        dynamicExposureKeyPressed = true;
+        (*illum).dynamicExposure = !(*illum).dynamicExposure;
+        *dynamicExposureKeyPressed = true;
     }
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE)
     {
-        dynamicExposureKeyPressed = false;
+        *dynamicExposureKeyPressed = false;
     }
 
     if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
     {
-        if (exposure > 0.0f)
-            exposure -= 0.001f;
+        if ((*illum).exposure > 0.0f)
+            (*illum).exposure -= 0.001f;
         else
-            exposure = 0.0f;
+            (*illum).exposure = 0.0f;
     }
     else if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
     {
-        exposure += 0.001f;
+        (*illum).exposure += 0.001f;
     }
 }
 
@@ -604,7 +591,7 @@ unsigned int loadTexture(char const * path, bool gammaCorrection)
     return textureID;
 }
 
-unsigned int loadCubemap(vector<std::string> faces)
+unsigned int loadCubemapSkybox(vector<std::string> faces)
 {
     unsigned int textureID;
     glGenTextures(1, &textureID);
@@ -647,34 +634,32 @@ float calculateAverageLuminance(float* imageData, int width, int height) {
     return totalLuminance / (width * height);
 }
 
-float updateExposure(float maxChange){
+void updateExposure(Illumination* illum){
     // Il target può essere il valore ideale di esposizione che si desidera
     float targetExposure = 2.0f;
     // Se la luminosità media è inferiore al range ideale (scena troppo buia)
-    if (avgLuminance < minLuminance) {
+    if ((*illum).avgLuminance < (*illum).minLuminance) {
         // Aumenta l'esposizione in modo non lineare: più è buio, più l'esposizione aumenta
-        targetExposure = pow(minLuminance / avgLuminance, 1.5f); // Il valore 1.5 regola la sensibilità
+        targetExposure = pow((*illum).minLuminance / (*illum).avgLuminance, 1.5f); // Il valore 1.5 regola la sensibilità
     }
     // Se la luminosità media è superiore al range ideale (scena troppo luminosa)
-    else if (avgLuminance > maxLuminance) {
+    else if ((*illum).avgLuminance > (*illum).maxLuminance) {
         // Riduci l'esposizione in modo non lineare: più è luminosa la scena, più riduci l'esposizione
-        targetExposure = pow(maxLuminance / avgLuminance, 1.5f);
+        targetExposure = pow((*illum).maxLuminance / (*illum).avgLuminance, 1.5f);
     }
 
-    float exposureChange = (targetExposure - exposure) * adaptationSpeed * deltaTime;
+    float exposureChange = (targetExposure - (*illum).exposure) * (*illum).adaptationSpeed * deltaTime;
 
     // Limita l'esposizione per evitare valori estremi
-    if (fabs(exposureChange) > maxChange) {
+    if (fabs(exposureChange) > (*illum).maxChange) {
         // Se la differenza è maggiore del cambiamento massimo consentito
         if (exposureChange > 0) {
-            exposureChange = maxChange;
+            exposureChange = (*illum).maxChange;
         } else {
-            exposureChange = -maxChange;
+            exposureChange = -(*illum).maxChange;
         }
     }
 
-    exposure += exposureChange;
-    exposure = clamp(exposure, minExposure, maxExposure);
-
-    return exposure;
+    (*illum).exposure += exposureChange;
+    (*illum).exposure = clamp((*illum).exposure, (*illum).minExposure, (*illum).maxExposure);
 }
