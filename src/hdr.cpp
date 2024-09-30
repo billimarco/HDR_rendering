@@ -1,12 +1,15 @@
-#define STB_IMAGE_IMPLEMENTATIONS
-
 #include <iostream>
+#include <vector>
+#include <string>
 #include <filesystem>
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+
+#define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 #include <nlohmann/json.hpp>
 
@@ -16,7 +19,6 @@
 
 #include <shader.h>
 #include <camera.h>
-#include <model.h>
 
 using json = nlohmann::json;
 
@@ -47,7 +49,7 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void processWindowInput(GLFWwindow *window);
 void processIlluminationInput(GLFWwindow* window, Illumination* illum, bool* illuminationChangeKeyPressed, bool* dynamicExposureKeyPressed);
 unsigned int loadTexture(const char *path, bool gammaCorrection);
-unsigned int loadCubemapSkybox(vector<std::string> faces);
+unsigned int loadCubemapSkybox(std::vector<std::string> faces);
 float calculateAverageLuminance(float* imageData, int width, int height);
 void updateExposure(Illumination* illum);
 
@@ -272,14 +274,14 @@ int main()
 
     // load textures
     // -------------
-    unsigned int containerTexture = loadTexture(filesystem::path("resources/textures/container.png").string().c_str(), true); // note that we're loading the texture as an SRGB texture
-    vector<std::string> skyboxFaces{
-        filesystem::path("resources/skybox/right.jpg").string(),
-        filesystem::path("resources/skybox/left.jpg").string(),
-        filesystem::path("resources/skybox/top.jpg").string(),
-        filesystem::path("resources/skybox/bottom.jpg").string(),
-        filesystem::path("resources/skybox/front.jpg").string(),
-        filesystem::path("resources/skybox/back.jpg").string(),
+    unsigned int containerTexture = loadTexture(std::filesystem::path("resources/textures/container.png").string().c_str(), true); // note that we're loading the texture as an SRGB texture
+    std::vector<std::string> skyboxFaces{
+        std::filesystem::path("resources/skybox/right.jpg").string(),
+        std::filesystem::path("resources/skybox/left.jpg").string(),
+        std::filesystem::path("resources/skybox/top.jpg").string(),
+        std::filesystem::path("resources/skybox/bottom.jpg").string(),
+        std::filesystem::path("resources/skybox/front.jpg").string(),
+        std::filesystem::path("resources/skybox/back.jpg").string(),
     };
     unsigned int skyboxTexture = loadCubemapSkybox(skyboxFaces);
     // configure floating point framebuffer
@@ -591,7 +593,7 @@ unsigned int loadTexture(char const * path, bool gammaCorrection)
     return textureID;
 }
 
-unsigned int loadCubemapSkybox(vector<std::string> faces)
+unsigned int loadCubemapSkybox(std::vector<std::string> faces)
 {
     unsigned int textureID;
     glGenTextures(1, &textureID);
@@ -661,5 +663,5 @@ void updateExposure(Illumination* illum){
     }
 
     (*illum).exposure += exposureChange;
-    (*illum).exposure = clamp((*illum).exposure, (*illum).minExposure, (*illum).maxExposure);
+    (*illum).exposure = std::clamp((*illum).exposure, (*illum).minExposure, (*illum).maxExposure);
 }
