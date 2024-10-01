@@ -1,29 +1,53 @@
 #version 330 core
+
+float log10(float x);
 out vec4 FragColor;
 
 in vec2 TexCoords;
 
 uniform sampler2D hdrBuffer;
+uniform sampler2D bloomBlur;
 uniform int hdr;
+uniform bool bloom;
 uniform float exposure;
+uniform float maxPixelScreenLuminance;
+uniform float avgPixelScreenLuminance;
 
 void main()
 {             
     const float gamma = 2.2;
     vec3 hdrColor = texture(hdrBuffer, TexCoords).rgb;
+    vec3 bloomColor = texture(bloomBlur, TexCoords).rgb;
+    if(bloom)
+        hdrColor += bloomColor; // additive blending
     vec3 result;
     switch(hdr){
         case 0:
             result = pow(hdrColor, vec3(1.0 / gamma));
             break;
-        case 1:
+        case 1://Reinhard Tone-Mapping
+            hdrColor *= exposure;
             result = hdrColor / (hdrColor + vec3(1.0));
             result = pow(result, vec3(1.0 / gamma));
             break;
-        case 2:
+        case 2://Exponential Tone-Mapping
             result = vec3(1.0) - exp(-hdrColor * exposure);
+            result = pow(result, vec3(1.0 / gamma));
+            break;
+        case 3://Drago Tone-Mapping
+            float bias = 0.85;
+            float c = 300*0.01; //Real Max Luminance of the screen * 0.01
+            float L_wmax = maxPixelScreenLuminance*exposure/avgPixelScreenLuminance;
+            hdrColor *= exposure;
+            float L_w = dot(hdrColor, vec3(0.2126, 0.7152, 0.0722)); // Luminance of the pixel
+            float L_d = c * log(1.0 + L_w) / log(2.0 + 8.0 * pow(L_w/ L_wmax, log(bias)/log(0.5))) * log10(L_wmax+1);
+            result = hdrColor * (L_d / (L_w + 1e-6));  // Avoid division by zero
             result = pow(result, vec3(1.0 / gamma));
             break;
     }
     FragColor = vec4(result, 1.0);
+}
+
+float log10(float x) {
+    return log(x) / log(10.0);
 }
