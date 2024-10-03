@@ -43,6 +43,7 @@ void main()
             float L_d = c * log(1.0 + L_w) / log(2.0 + 8.0 * pow(L_w/ L_wmax, log(bias)/log(0.5))) * log10(L_wmax+1);
             result = hdrColor * (L_d / (L_w + 1e-6));  // Avoid division by zero
             result = pow(result, vec3(1.0 / gamma));
+            result = clamp(result, 0.0, 1.0);
             break;
     }
     FragColor = vec4(result, 1.0);

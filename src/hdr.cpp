@@ -22,6 +22,7 @@
 
 using json = nlohmann::json;
 
+// TYPE OF HDR IMPLEMENTED
 enum IlluminationType {
   NO_HDR = 0,
   REINHARD_HDR = 1,
@@ -29,43 +30,34 @@ enum IlluminationType {
   DRAGO_HDR = 3
 };
 
+// STRUCTURE OF FRAME ILLUMINATION DATA
 struct Illumination{
-    float exposure;
-    enum IlluminationType hdr;
-    bool dynamicExposure;
-    bool bloom;
-    float adaptationSpeed;
-    float maxChange;
+    float exposure; //how much time "camera" absorbed light
+    enum IlluminationType hdr; //type of hdr
+    bool dynamicExposure; //dynamic exposure for global-type hdr for change dynamically exposure and create local-like behaviour
+    bool bloom; //blurring effect of lights
+    float adaptationSpeed; //how fast you adapt from dark to light and viceversa
+    float maxChange; //limit how much you can adapt frame by frame
 
-    float avgPixelScreenLuminance;
-    float maxPixelScreenLuminance;
-    float minPixelScreenLuminance;
+    float avgPixelScreenLuminance; // average pixel luminance of a frame
+    float maxPixelScreenLuminance; // maximum pixel luminance of a frame
+    float minPixelScreenLuminance; // minimum pixel luminance of a frame
 
-    float infCapLuminance;
-    float supCapLuminance;
+    float infCapLuminance; // inferior cap of luminance : when surpassed we increase exposure gradually to maxExposure
+    float supCapLuminance; // superior cap of luminance : when surpassed we decrease exposure gradually to minExposure
     
-    float avgExposure;
-    float minExposure;
-    float maxExposure;
+    float avgExposure; // exposure of frame between inferior and superior cap of luminance
+    float minExposure; // minimum exposure of a scene
+    float maxExposure; // maximum exposure of a scene
 };
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height);
-void mouse_callback(GLFWwindow* window, double xposIn, double yposIn);
-void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
-void processWindowInput(GLFWwindow *window);
-void processIlluminationInput(GLFWwindow* window, Illumination* illum, bool* illuminationChangeKeyPressed, bool* dynamicExposureKeyPressed , bool* bloomKeyPressed);
-unsigned int loadTexture(const char *path, bool gammaCorrection);
-unsigned int loadCubemapSkybox(std::vector<std::string> faces);
-float* calculateLuminanceScreenStats(float* imageData, int width, int height);
-void updateExposure(Illumination* illum);
-
-// fa il parse del file json in ingresso e ottengo una struttura simile ad un dizionario con tutti i valori del file di config
+// parses json file of a config file
 std::ifstream conf_file("settings/config.json");
 json config = json::parse(conf_file);
 
-// SCREEN SETTINGS
-unsigned int win_width = config["window"]["width"];
-unsigned int win_height = config["window"]["height"];
+// WINDOW SETTINGS
+unsigned int win_width = config["window"]["width"]; //width of the window
+unsigned int win_height = config["window"]["height"]; //height of the window
 
 // CAMERA SETTINGS
 Camera camera(glm::vec3(config["camera"]["x"], config["camera"]["y"], config["camera"]["z"]));
@@ -74,13 +66,23 @@ float lastY = (float)win_height / 2.0;
 bool firstMouse = true;
 
 // TIMING VARIABLES
-float deltaTime = 0.0f;
-float lastFrame = 0.0f;
+float deltaTimeFrame = 0.0f; //difference of time from a frame and his predecessor
+float lastFrame = 0.0f; //absolute time of the precedessor frame from the start of the program
+float currentFrame = 0.0f; //absolute time of the actual frame from the start of the program 
+
+// FUNCTION DECLARATIONS
+void framebuffer_size_callback(GLFWwindow* window, int width, int height);
+void mouse_callback(GLFWwindow* window, double xposIn, double yposIn);
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+void processWindowInput(GLFWwindow *window);
+void processIlluminationInput(GLFWwindow* window, Illumination* illum, bool* illuminationChangeKeyPressed, bool* dynamicExposureKeyPressed , bool* bloomKeyPressed);
+unsigned int loadTexture(const char *path, bool gammaCorrection);
+unsigned int loadCubemapSkyboxTexture(std::vector<std::string> faces);
+float* calculateLuminanceScreenStats(float* imageFrameData, int width, int height);
+void updateExposure(Illumination* illum);
 
 int main()
 {
-    // glfw: initialize and configure
-    // ------------------------------
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -90,26 +92,6 @@ int main()
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     #endif
 
-    //ILLUMINATION SETTINGS
-    Illumination illum_settings;
-    illum_settings.hdr = config["illumination"]["type"];
-    illum_settings.dynamicExposure = config["illumination"]["dynamic_exp"];
-    illum_settings.exposure = config["illumination"]["exposure"];
-    illum_settings.infCapLuminance = config["illumination"]["inf_cap_luminance"];
-    illum_settings.supCapLuminance = config["illumination"]["sup_cap_luminance"];
-    illum_settings.avgExposure = config["illumination"]["avg_exposure"];
-    illum_settings.minExposure = config["illumination"]["min_exposure"];
-    illum_settings.minExposure = config["illumination"]["min_exposure"];
-    illum_settings.maxExposure = config["illumination"]["max_exposure"];
-    illum_settings.adaptationSpeed = config["illumination"]["adaptation_speed"];// Smoothly adapt exposure (adjust speed as needed)
-    illum_settings.maxChange = config["illumination"]["max_change"];
-    illum_settings.bloom = config["illumination"]["bloom"];
-    bool illuminationChangeKeyPressed = false;
-    bool dynamicExposureKeyPressed = false;
-    bool bloomKeyPressed = false;
-
-    // glfw window creation
-    // --------------------
     GLFWwindow* window = glfwCreateWindow(win_width, win_height, "HDR_rendering_Elaborato", NULL, NULL);
     if (window == NULL)
     {
@@ -121,8 +103,6 @@ int main()
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
-
-    // tell GLFW to capture our mouse
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     // glad: load all OpenGL function pointers
@@ -133,17 +113,46 @@ int main()
         return -1;
     }
 
-    // configure global opengl state
-    // -----------------------------
+    // ILLUMINATION SETTINGS
+    Illumination illum_settings;
+    illum_settings.hdr = config["illumination"]["type"];
+    illum_settings.dynamicExposure = config["illumination"]["dynamic_exp"];
+    illum_settings.exposure = config["illumination"]["exposure"];
+    illum_settings.infCapLuminance = config["illumination"]["inf_cap_luminance"];
+    illum_settings.supCapLuminance = config["illumination"]["sup_cap_luminance"];
+    illum_settings.avgExposure = config["illumination"]["avg_exposure"];
+    illum_settings.minExposure = config["illumination"]["min_exposure"];
+    illum_settings.minExposure = config["illumination"]["min_exposure"];
+    illum_settings.maxExposure = config["illumination"]["max_exposure"];
+    illum_settings.adaptationSpeed = config["illumination"]["adaptation_speed"];
+    illum_settings.maxChange = config["illumination"]["max_change"];
+    illum_settings.bloom = config["illumination"]["bloom"];
+    bool illuminationChangeKeyPressed = false;
+    bool dynamicExposureKeyPressed = false;
+    bool bloomKeyPressed = false;
+
+    // GLOBAL OPERATIONS
     glEnable(GL_DEPTH_TEST);
 
-    // build and compile shaders
-    // -------------------------
-    Shader lightingShader("shader/lightingVS.txt", "shader/lightingFS.txt");
-    Shader skyboxShader("shader/skyboxVS.txt", "shader/skyboxFS.txt");
-    Shader blurShader("shader/blurVS", "shader/blurFS");
-    Shader hdrShader("shader/hdrVS.txt", "shader/hdrFS.txt");
+    // SHADERS
+    //shader definitions
+    Shader lightingShader("shader/lightVS.txt", "shader/lightFS.txt"); //for rendering container and lights
+    Shader skyboxShader("shader/skyboxVS.txt", "shader/skyboxFS.txt"); //for rendering skybox
+    Shader blurShader("shader/blurVS", "shader/blurFS"); //for blooming (post-processing operation)
+    Shader hdrShader("shader/hdrVS.txt", "shader/hdrFS.txt"); //for hdr (post-processing operation)
 
+    
+    lightingShader.useProgram();
+    lightingShader.setInt("diffuseTexture", 0);
+    hdrShader.useProgram();
+    hdrShader.setInt("hdrBuffer", 0);
+    skyboxShader.useProgram();
+    skyboxShader.setInt("skybox", 0);
+
+    // VAOs & VBOs (VertexArrayObjects & VertexBufferObjects)
+    //SkyBox settings
+    unsigned int skyboxVAO;
+    unsigned int skyboxVBO;
     float skyboxVertices[] = {
         // positions          
         -1.0f,  1.0f, -1.0f,
@@ -188,8 +197,6 @@ int main()
         -1.0f, -1.0f,  1.0f,
         1.0f, -1.0f,  1.0f
     };
-    // skybox VAO
-    unsigned int skyboxVAO, skyboxVBO;
     glGenVertexArrays(1, &skyboxVAO);
     glGenBuffers(1, &skyboxVBO);
     glBindVertexArray(skyboxVAO);
@@ -198,17 +205,20 @@ int main()
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 
-    unsigned int cubeVAO;
-    unsigned int cubeVBO;
-    float vertices[] = {
-        /*// back face
+    //Container settings
+    unsigned int containerVAO;
+    unsigned int containerVBO;
+    float containerVertices[] = {
+        /*
+        // back face
         -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
         1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
         1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 0.0f, // bottom-right         
         1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 1.0f, 1.0f, // top-right
         -1.0f, -1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 0.0f, // bottom-left
         -1.0f,  1.0f, -1.0f,  0.0f,  0.0f, -1.0f, 0.0f, 1.0f, // top-left
-        */// front face
+        */
+        // front face
         -1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 0.0f, 0.0f, // bottom-left
         1.0f, -1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 0.0f, // bottom-right
         1.0f,  1.0f,  1.0f,  0.0f,  0.0f,  1.0f, 1.0f, 1.0f, // top-right
@@ -245,64 +255,59 @@ int main()
         -1.0f,  1.0f,  1.0f,  0.0f,  1.0f,  0.0f, 0.0f, 0.0f  // bottom-left 
             
     };
-    glGenVertexArrays(1, &cubeVAO);
-    glGenBuffers(1, &cubeVBO);
-    // fill buffer
-    glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-    // link vertex attributes
-    glBindVertexArray(cubeVAO);
+    glGenVertexArrays(1, &containerVAO);
+    glGenBuffers(1, &containerVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, containerVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(containerVertices), containerVertices, GL_STATIC_DRAW);
+    glBindVertexArray(containerVAO);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0); //positions
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float))); //normals
     glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float))); //texcoords
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
-    unsigned int quadVAO;
-    unsigned int quadVBO;
-    float quadVertices[] = {
-        // positions        // texture Coords
+    //Frame settings (useful for post-processing operations)
+    unsigned int frameVAO;
+    unsigned int frameVBO;
+    float frameVertices[] = {
         -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
         -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
         1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
         1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
     };
-    // setup plane VAO
-    glGenVertexArrays(1, &quadVAO);
-    glGenBuffers(1, &quadVBO);
-    glBindVertexArray(quadVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+    glGenVertexArrays(1, &frameVAO);
+    glGenBuffers(1, &frameVBO);
+    glBindVertexArray(frameVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, frameVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(frameVertices), &frameVertices, GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0); //positions
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float))); //texcoords
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
-    // load textures
-    // -------------
+    // TEXTURES
     unsigned int containerTexture = loadTexture(std::filesystem::path("resources/textures/container.png").string().c_str(), true); // note that we're loading the texture as an SRGB texture
     std::vector<std::string> skyboxFaces{
-        std::filesystem::path("resources/skybox/right.jpg").string(),
-        std::filesystem::path("resources/skybox/left.jpg").string(),
-        std::filesystem::path("resources/skybox/top.jpg").string(),
-        std::filesystem::path("resources/skybox/bottom.jpg").string(),
-        std::filesystem::path("resources/skybox/front.jpg").string(),
-        std::filesystem::path("resources/skybox/back.jpg").string(),
+        std::filesystem::path("resources/skybox/px.jpg").string(),
+        std::filesystem::path("resources/skybox/nx.jpg").string(),
+        std::filesystem::path("resources/skybox/py.jpg").string(),
+        std::filesystem::path("resources/skybox/ny.jpg").string(),
+        std::filesystem::path("resources/skybox/pz.jpg").string(),
+        std::filesystem::path("resources/skybox/nz.jpg").string(),
     };
-    unsigned int skyboxTexture = loadCubemapSkybox(skyboxFaces);
+    unsigned int skyboxTexture = loadCubemapSkyboxTexture(skyboxFaces);
 
-    // configure floating point framebuffer
-    // ------------------------------------
+    // FBOs (FrameBufferObjects)
     unsigned int hdrFBO;
     glGenFramebuffers(1, &hdrFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
-    // create floating point color buffer
-    unsigned int colorBuffers[2];
+
+    unsigned int colorBuffers[2]; //creates two images : one for color and the other for brightness 
     glGenTextures(2, colorBuffers);
     for (unsigned int i = 0; i < 2; i++)
     {
@@ -312,20 +317,23 @@ int main()
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, colorBuffers[i], 0);
     }
-    // create depth buffer (renderbuffer)
+    
+    //create depth buffer (renderbuffer)
     unsigned int rboDepth;
     glGenRenderbuffers(1, &rboDepth);
     glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
     glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, win_width, win_height);
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
-    // tell OpenGL which color attachments we'll use (of this framebuffer) for rendering 
+
+    //Color attachments we'll use (of this framebuffer) for rendering 
     unsigned int attachments[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
     glDrawBuffers(2, attachments);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         std::cout << "Framebuffer not complete!" << std::endl;
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // ping-pong-framebuffer for blurring
+    // ping-pong-framebuffers for two-pass gaussian blurring (first horizontally and than vertically)
+    // these framebuffers keep passing data from one to another
     unsigned int pingpongFBO[2];
     unsigned int pingpongColorbuffers[2];
     glGenFramebuffers(2, pingpongFBO);
@@ -337,19 +345,18 @@ int main()
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, win_width, win_height, 0, GL_RGBA, GL_FLOAT, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpongColorbuffers[i], 0);
-        // also check if framebuffers are complete (no need for depth buffer)
+
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
             std::cout << "Framebuffer not complete!" << std::endl;
     }
 
-    // lighting info
-    // -------------
-    // positions
+    // LIGHTS
+    // light positions
     std::vector<glm::vec3> lightPositions;
-    lightPositions.push_back(glm::vec3( 0.0f,  49.5f, -255.5f)); // sun
+    lightPositions.push_back(glm::vec3( 49.5f,  49.5f, -255.5f)); //sun
     lightPositions.push_back(glm::vec3( 0.0f, 0.0f, -40.5f));
     lightPositions.push_back(glm::vec3( 2.5f, 0.0f, -22.5f));
     lightPositions.push_back(glm::vec3( 0.0f, -2.5f, -22.5f));
@@ -363,7 +370,8 @@ int main()
     lightPositions.push_back(glm::vec3( 0.0f, -2.5f, -7.5f));
     lightPositions.push_back(glm::vec3( -2.5f, 0.0f, -7.5f));
     lightPositions.push_back(glm::vec3( 0.0f, 2.5f, -7.5f));
-    // colors
+    
+    //light colors
     std::vector<glm::vec3> lightColors;
     lightColors.push_back(glm::vec3(300.0f, 300.0f, 300.0f));
     lightColors.push_back(glm::vec3(200.0f, 200.0f, 200.0f));
@@ -380,67 +388,55 @@ int main()
     lightColors.push_back(glm::vec3(0.0f, 0.0f, 1.0f));
     lightColors.push_back(glm::vec3(1.0f, 1.0f, 0.0f));
 
-    // shader configuration
-    // --------------------
-    lightingShader.use();
-    lightingShader.setInt("diffuseTexture", 0);
-    hdrShader.use();
-    hdrShader.setInt("hdrBuffer", 0);
-    skyboxShader.use();
-    skyboxShader.setInt("skybox", 0);
+    // IMAGE FRAME DATA
+    float* imageFrameData = new float[win_width * win_height * 3]; 
 
-    float* imageData = new float[win_width * win_height * 3];
-
-    // render loop
-    // -----------
+    // RENDER LOOP
     while (!glfwWindowShouldClose(window))
     {
-        // per-frame time logic
-        // --------------------
-        float currentFrame = static_cast<float>(glfwGetTime());
-        deltaTime = currentFrame - lastFrame;
+        // TIME CALCULATIONS FRAME BY FRAME
+        currentFrame = static_cast<float>(glfwGetTime());
+        deltaTimeFrame = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        // input
-        // -----
+        // CAMERA VIEW & PERSPECTIVE
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (GLfloat)win_width / (GLfloat)win_height, 0.1f, 100.0f);
+        glm::mat4 view = camera.GetViewMatrix();
+
+        // INPUT PROCESSING
         processWindowInput(window);
         processIlluminationInput(window, &illum_settings, &illuminationChangeKeyPressed, &dynamicExposureKeyPressed, &bloomKeyPressed);
 
-        // render
-        // ------
-        glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+        // WHITE SCREEN RENDERING (if something doesn't work with rendering, we obtain only a white window)
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // 1. render scene into floating point framebuffer
-        // -----------------------------------------------
+        // FRAMEBUFFER RENDERING (CONTAINER)
         glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (GLfloat)win_width / (GLfloat)win_height, 0.1f, 100.0f);
-        glm::mat4 view = camera.GetViewMatrix();
-        lightingShader.use();
+        lightingShader.useProgram();
         lightingShader.setMat4("projection", projection);
         lightingShader.setMat4("view", view);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, containerTexture);
-        // set lighting uniforms
         for (unsigned int i = 0; i < lightPositions.size(); i++)
         {
             lightingShader.setVec3("lights[" + std::to_string(i) + "].Position", lightPositions[i]);
             lightingShader.setVec3("lights[" + std::to_string(i) + "].Color", lightColors[i]);
         }
         lightingShader.setVec3("viewPos", camera.Position);
-        // render tunnel
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, 0.0f, -15.0));
-        model = glm::scale(model, glm::vec3(3.0f, 3.0f, 27.5f));
-        lightingShader.setMat4("model", model);
+        glm::mat4 containerModel = glm::mat4(1.0f);
+        containerModel = glm::translate(containerModel, glm::vec3(0.0f, 0.0f, -15.0));
+        containerModel = glm::scale(containerModel, glm::vec3(3.0f, 3.0f, 27.5f));
+        lightingShader.setMat4("model", containerModel);
         lightingShader.setInt("inverse_normals", true);
-        glBindVertexArray(cubeVAO);
+        glBindVertexArray(containerVAO);
         glDrawArrays(GL_TRIANGLES, 0, 30);
         glBindVertexArray(0);
 
+        // SKYBOX RENDERING
         glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
-        skyboxShader.use();
+        skyboxShader.useProgram();
         view = glm::mat4(glm::mat3(camera.GetViewMatrix())); // remove translation from the view matrix
         skyboxShader.setMat4("view", view);
         skyboxShader.setMat4("projection", projection);
@@ -451,20 +447,20 @@ int main()
         glBindVertexArray(0);
         glDepthFunc(GL_LESS);
         glReadBuffer(GL_BACK);
-        glReadPixels(0, 0, win_width, win_height, GL_RGB, GL_FLOAT, imageData);  
+
+        glReadPixels(0, 0, win_width, win_height, GL_RGB, GL_FLOAT, imageFrameData);  
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        // 2. blur bright fragments with two-pass Gaussian Blur 
-        // --------------------------------------------------
+        // BLOOM FILTER
         bool horizontal = true, first_iteration = true;
         unsigned int amount = 10;
-        blurShader.use();
+        blurShader.useProgram();
         for (unsigned int i = 0; i < amount; i++)
         {
             glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[horizontal]);
             blurShader.setInt("horizontal", horizontal);
             glBindTexture(GL_TEXTURE_2D, first_iteration ? colorBuffers[1] : pingpongColorbuffers[!horizontal]);  // bind texture of other framebuffer (or scene if first iteration)
-            glBindVertexArray(quadVAO);
+            glBindVertexArray(frameVAO);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
             glBindVertexArray(0);
             horizontal = !horizontal;
@@ -473,64 +469,67 @@ int main()
         }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        float* luminanceScreenStats = calculateLuminanceScreenStats(imageData,win_width,win_height);
+        // LUMINANCE STATS
+        float* luminanceScreenStats = calculateLuminanceScreenStats(imageFrameData,win_width,win_height);
         illum_settings.avgPixelScreenLuminance = luminanceScreenStats[0];
         illum_settings.maxPixelScreenLuminance = luminanceScreenStats[1];
         illum_settings.minPixelScreenLuminance = luminanceScreenStats[2];
-
         if(illum_settings.dynamicExposure){
             updateExposure(&illum_settings);
         }
-        // 2. now render floating point color buffer to 2D quad and tonemap HDR colors to default framebuffer's (clamped) color range
-        // --------------------------------------------------------------------------------------------------------------------------
+
+        // POST-PROCESSING OPERATIONS (HDR RENDERING)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        hdrShader.use();
+        hdrShader.useProgram();
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
+        glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);//Apply FB color texture
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, pingpongColorbuffers[!horizontal]);
+        glBindTexture(GL_TEXTURE_2D, pingpongColorbuffers[!horizontal]);//Apply Bloom Filter texture 
         hdrShader.setInt("hdr", illum_settings.hdr);
         hdrShader.setInt("bloom", illum_settings.bloom);
         hdrShader.setFloat("exposure", illum_settings.exposure);
-        //Drago-only uniform variables
+        //Drago-only Tone-Mapping uniform variables
         hdrShader.setFloat("maxPixelScreenLuminance", illum_settings.maxPixelScreenLuminance);
         hdrShader.setFloat("avgPixelScreenLuminance", illum_settings.avgPixelScreenLuminance);
-        glBindVertexArray(quadVAO);
+        glBindVertexArray(frameVAO);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         glBindVertexArray(0);
+
         std::cout << "hdr: " << illum_settings.hdr << "| dynamicExp: " << (illum_settings.dynamicExposure ? "on" : "off") << "| bloom: " << (illum_settings.bloom ? "on" : "off") << "| exposure: " << illum_settings.exposure << std::endl;
-        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
-        // -------------------------------------------------------------------------------
 
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
-    // Pulizia e uscita
+
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
 }
 
-// process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
-// ---------------------------------------------------------------------------------------------------------
+// FUNCTION DEFINITIONS
+
+// process window input: whether relevant keys are pressed/released window change (only camera and window feature)
+// ---------------------------------------------------------------------------------------------------------------
 void processWindowInput(GLFWwindow* window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
 
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        camera.ProcessKeyboard(FORWARD, deltaTime);
+        camera.ProcessKeyboard(FORWARD, deltaTimeFrame);
 
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        camera.ProcessKeyboard(BACKWARD, deltaTime);
+        camera.ProcessKeyboard(BACKWARD, deltaTimeFrame);
 
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        camera.ProcessKeyboard(LEFT, deltaTime);
+        camera.ProcessKeyboard(LEFT, deltaTimeFrame);
 
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        camera.ProcessKeyboard(RIGHT, deltaTime);
+        camera.ProcessKeyboard(RIGHT, deltaTimeFrame);
 }
 
+// process illumination input: whether relevant keys are pressed/released illumination change
+// ---------------------------------------------------------------------------------------------------------
 void processIlluminationInput(GLFWwindow* window, Illumination* illum, bool* illuminationChangeKeyPressed, bool* dynamicExposureKeyPressed, bool* bloomKeyPressed)
 {
     if (glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS && !(*illuminationChangeKeyPressed))
@@ -591,16 +590,15 @@ void processIlluminationInput(GLFWwindow* window, Illumination* illum, bool* ill
     }
 }
 
-// glfw: whenever the window size changed (by OS or user resize) this callback function executes
+// Whenever the window size changed (by OS or user resize) this callback function executes
 // ---------------------------------------------------------------------------------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
-    // make sure the viewport matches the new window dimensions; note that width and 
-    // height will be significantly larger than specified on retina displays.
+    // make sure the viewport matches the new window dimensions
     glViewport(0, 0, width, height);
 }
 
-// glfw: whenever the mouse moves, this callback is called
+// Whenever the mouse moves, this callback is called
 // -------------------------------------------------------
 void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
 {
@@ -614,7 +612,7 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
     }
 
     float xoffset = xpos - lastX;
-    float yoffset = lastY - ypos; // reversed since y-coordinates go from bottom to top
+    float yoffset = lastY - ypos;
 
     lastX = xpos;
     lastY = ypos;
@@ -622,15 +620,15 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
     camera.ProcessMouseMovement(xoffset, yoffset);
 }
 
-// glfw: whenever the mouse scroll wheel scrolls, this callback is called
+// Whenever the mouse scroll wheel scrolls, this callback is called
 // ----------------------------------------------------------------------
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
     camera.ProcessMouseScroll(static_cast<float>(yoffset));
 }
 
-// utility function for loading a 2D texture from file
-// ---------------------------------------------------
+// Utility function for loading a 2D texture from file
+// --------------------------------------------------------
 unsigned int loadTexture(char const * path, bool gammaCorrection)
 {
     unsigned int textureID;
@@ -677,7 +675,9 @@ unsigned int loadTexture(char const * path, bool gammaCorrection)
     return textureID;
 }
 
-unsigned int loadCubemapSkybox(std::vector<std::string> faces)
+// Utility function for loading skybox from faces
+// ----------------------------------------------------------------------
+unsigned int loadCubemapSkyboxTexture(std::vector<std::string> faces)
 {
     unsigned int textureID;
     glGenTextures(1, &textureID);
@@ -707,57 +707,53 @@ unsigned int loadCubemapSkybox(std::vector<std::string> faces)
     return textureID;
 }
 
-float* calculateLuminanceScreenStats(float* imageData, int width, int height) {
+// Utility function for calculate average, maximum and minimum luminance of a screen frame
+// -----------------------------------------------------------------------------------------
+float* calculateLuminanceScreenStats(float* imageFrameData, int width, int height) {
     static float luminanceStats[3]; //avg=0 max=1 min=2
     luminanceStats[1]=-1;
     luminanceStats[2]=-1;
     float totalLuminance = 0.0f;
     for (int i = 0; i < width * height * 3; i += 3) {
-        float r = imageData[i];
-        float g = imageData[i + 1];
-        float b = imageData[i + 2];
-        // Calcola la luminanza utilizzando la formula percettiva
-        float luminance = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-        totalLuminance += luminance;
-        if(luminance>luminanceStats[1] || luminanceStats[1]==-1){
-            luminanceStats[1]=luminance;
+        // Calculate pixel luminance with perceptive formula
+        float pixelLuminance = 0.2126f * imageFrameData[i] + 0.7152f * imageFrameData[i + 1] + 0.0722f * imageFrameData[i + 2];
+        totalLuminance += pixelLuminance;
+        // Find max luminance
+        if(pixelLuminance>luminanceStats[1] || luminanceStats[1]==-1){
+            luminanceStats[1]=pixelLuminance;
         }
-        if(luminance<luminanceStats[2] || luminanceStats[2]==-1){
-            luminanceStats[2]=luminance;
+        // Find min luminance
+        if(pixelLuminance<luminanceStats[2] || luminanceStats[2]==-1){
+            luminanceStats[2]=pixelLuminance;
         }
     }
+    // Calculate avg luminance
     luminanceStats[0] = totalLuminance / (width * height);
     return luminanceStats;
 }
 
 void updateExposure(Illumination* illum){
-    // Il target può essere il valore ideale di esposizione che si desidera
+    // Target of ideal value of exposure
     float targetExposure =  (*illum).avgExposure;
-    // Se la luminosità media è inferiore al range ideale (scena troppo buia)
+    // If average pixel luminance is lower than an inferior cap (dark scene) then increase exposure 
+    // in a non-linear way
     if ((*illum).avgPixelScreenLuminance < (*illum).infCapLuminance) {
-        // Aumenta l'esposizione in modo non lineare: più è buio, più l'esposizione aumenta
-        targetExposure = pow((*illum).infCapLuminance / (*illum).avgPixelScreenLuminance, 1.5f); // Il valore 1.5 regola la sensibilità
+        targetExposure = pow((*illum).infCapLuminance / (*illum).avgPixelScreenLuminance, 1.5f);
     }
-    // Se la luminosità media è superiore al range ideale (scena troppo luminosa)
+    // If average pixel luminance is greater than a superior cap (light scene) then decrease exposure 
+    // in a non-linear way
     else if ((*illum).avgPixelScreenLuminance > (*illum).supCapLuminance) {
-        // Riduci l'esposizione in modo non lineare: più è luminosa la scena, più riduci l'esposizione
         targetExposure = pow((*illum).supCapLuminance / (*illum).avgPixelScreenLuminance, 1.5f);
     }
 
-    float exposureChange = (targetExposure - (*illum).exposure) * (*illum).adaptationSpeed * deltaTime;
-
-    // Limita l'esposizione per evitare valori estremi
-    if (fabs(exposureChange) > (*illum).maxChange) {
-        // Se la differenza è maggiore del cambiamento massimo consentito
-        if (exposureChange > 0) {
-            exposureChange = (*illum).maxChange;
-        } else {
-            exposureChange = -(*illum).maxChange;
-        }
-    }
-
+    // This formula describes exposure change based on frame by frame difference with a learning rate
+    float exposureChange = (targetExposure - (*illum).exposure) * (*illum).adaptationSpeed * deltaTimeFrame;
+    // Limit exposure change into a range [-maxChange,maxChange] for limiting simil-instatanous frame 
+    // by frame average pixel luminance change
+    exposureChange = std::clamp(exposureChange, -(*illum).maxChange, (*illum).maxChange);
+    // Adding exposure change to image exposure
     (*illum).exposure += exposureChange;
+    // Limit exposure into a range [minExposure,maxExposure] for infinite exposure in dark scene 
+    // behaviour and viceversa
     (*illum).exposure = std::clamp((*illum).exposure, (*illum).minExposure, (*illum).maxExposure);
 }
-
-//DEVI TROVARE LA MAXLUMINANCE E FARE UN TONE-MAPPING
