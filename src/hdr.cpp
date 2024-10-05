@@ -35,7 +35,7 @@ struct Illumination{
     float exposure; //how much time "camera" absorbed light
     enum IlluminationType hdr; //type of hdr
     bool dynamicExposure; //dynamic exposure for global-type hdr for change dynamically exposure and create local-like behaviour
-    bool bloom; //blurring effect of lights
+    bool bloomState; //blurring effect of lights
     float adaptationSpeed; //how fast you adapt from dark to light and viceversa
     float maxChange; //limit how much you can adapt frame by frame
 
@@ -126,7 +126,7 @@ int main()
     illum_settings.maxExposure = config["illumination"]["max_exposure"];
     illum_settings.adaptationSpeed = config["illumination"]["adaptation_speed"];
     illum_settings.maxChange = config["illumination"]["max_change"];
-    illum_settings.bloom = config["illumination"]["bloom"];
+    illum_settings.bloomState = config["illumination"]["bloom"]["state"];
     bool illuminationChangeKeyPressed = false;
     bool dynamicExposureKeyPressed = false;
     bool bloomKeyPressed = false;
@@ -136,18 +136,22 @@ int main()
 
     // SHADERS
     //shader definitions
-    Shader lightingShader("shader/lightVS.txt", "shader/lightFS.txt"); //for rendering container and lights
+    Shader lightShader("shader/lightVS.txt", "shader/lightFS.txt"); //for rendering container and lights
     Shader skyboxShader("shader/skyboxVS.txt", "shader/skyboxFS.txt"); //for rendering skybox
-    Shader blurShader("shader/blurVS", "shader/blurFS"); //for blooming (post-processing operation)
+    Shader blurShader("shader/blurVS.txt", "shader/blurFS.txt"); //for blooming (post-processing operation)
     Shader hdrShader("shader/hdrVS.txt", "shader/hdrFS.txt"); //for hdr (post-processing operation)
 
     
-    lightingShader.useProgram();
-    lightingShader.setInt("diffuseTexture", 0);
-    hdrShader.useProgram();
-    hdrShader.setInt("hdrBuffer", 0);
+    lightShader.useProgram();
+    lightShader.setInt("difTex", 0);
     skyboxShader.useProgram();
     skyboxShader.setInt("skybox", 0);
+    blurShader.useProgram();
+    blurShader.setInt("brightFrame", 0);
+    blurShader.setFloat("stdDev", config["illumination"]["bloom"]["standard_deviation"]);
+    blurShader.setInt("kernelSize", config["illumination"]["bloom"]["kernel_size"]);
+    hdrShader.useProgram();
+    hdrShader.setInt("hdrBuffer", 0);
 
     // VAOs & VBOs (VertexArrayObjects & VertexBufferObjects)
     //SkyBox settings
@@ -409,27 +413,26 @@ int main()
 
         // WHITE SCREEN RENDERING (if something doesn't work with rendering, we obtain only a white window)
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // FRAMEBUFFER RENDERING (CONTAINER)
         glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        lightingShader.useProgram();
-        lightingShader.setMat4("projection", projection);
-        lightingShader.setMat4("view", view);
+        lightShader.useProgram();
+        lightShader.setMat4("projection", projection);
+        lightShader.setMat4("view", view);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, containerTexture);
         for (unsigned int i = 0; i < lightPositions.size(); i++)
         {
-            lightingShader.setVec3("lights[" + std::to_string(i) + "].Position", lightPositions[i]);
-            lightingShader.setVec3("lights[" + std::to_string(i) + "].Color", lightColors[i]);
+            lightShader.setVec3("lights[" + std::to_string(i) + "].Position", lightPositions[i]);
+            lightShader.setVec3("lights[" + std::to_string(i) + "].Color", lightColors[i]);
         }
-        lightingShader.setVec3("viewPos", camera.Position);
+        lightShader.setVec3("viewPos", camera.Position);
         glm::mat4 containerModel = glm::mat4(1.0f);
         containerModel = glm::translate(containerModel, glm::vec3(0.0f, 0.0f, -15.0));
         containerModel = glm::scale(containerModel, glm::vec3(3.0f, 3.0f, 27.5f));
-        lightingShader.setMat4("model", containerModel);
-        lightingShader.setInt("inverse_normals", true);
+        lightShader.setMat4("model", containerModel);
+        lightShader.setInt("inverse_normals", true);
         glBindVertexArray(containerVAO);
         glDrawArrays(GL_TRIANGLES, 0, 30);
         glBindVertexArray(0);
@@ -451,21 +454,20 @@ int main()
         glReadPixels(0, 0, win_width, win_height, GL_RGB, GL_FLOAT, imageFrameData);  
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+        // POST-PROCESSING OPERATIONS
+
         // BLOOM FILTER
-        bool horizontal = true, first_iteration = true;
-        unsigned int amount = 10;
+        bool horizontal = true, first_blurring = true;
+        unsigned int blurPass = 2*config["illumination"]["bloom"]["two_dim_blur_pass"].get<unsigned int>();
         blurShader.useProgram();
-        for (unsigned int i = 0; i < amount; i++)
+        for (unsigned int i = 0; i < blurPass; i++)
         {
             glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[horizontal]);
             blurShader.setInt("horizontal", horizontal);
-            glBindTexture(GL_TEXTURE_2D, first_iteration ? colorBuffers[1] : pingpongColorbuffers[!horizontal]);  // bind texture of other framebuffer (or scene if first iteration)
-            glBindVertexArray(frameVAO);
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-            glBindVertexArray(0);
+            glBindTexture(GL_TEXTURE_2D, first_blurring ? colorBuffers[1] : pingpongColorbuffers[!horizontal]);  // bind texture of other framebuffer (or scene if first iteration)
             horizontal = !horizontal;
-            if (first_iteration)
-                first_iteration = false;
+            if (first_blurring)
+                first_blurring = false;
         }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -478,7 +480,7 @@ int main()
             updateExposure(&illum_settings);
         }
 
-        // POST-PROCESSING OPERATIONS (HDR RENDERING)
+        // HDR RENDERING
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         hdrShader.useProgram();
         glActiveTexture(GL_TEXTURE0);
@@ -486,7 +488,7 @@ int main()
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, pingpongColorbuffers[!horizontal]);//Apply Bloom Filter texture 
         hdrShader.setInt("hdr", illum_settings.hdr);
-        hdrShader.setInt("bloom", illum_settings.bloom);
+        hdrShader.setInt("bloom", illum_settings.bloomState);
         hdrShader.setFloat("exposure", illum_settings.exposure);
         //Drago-only Tone-Mapping uniform variables
         hdrShader.setFloat("maxPixelScreenLuminance", illum_settings.maxPixelScreenLuminance);
@@ -495,7 +497,7 @@ int main()
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         glBindVertexArray(0);
 
-        std::cout << "hdr: " << illum_settings.hdr << "| dynamicExp: " << (illum_settings.dynamicExposure ? "on" : "off") << "| bloom: " << (illum_settings.bloom ? "on" : "off") << "| exposure: " << illum_settings.exposure << std::endl;
+        std::cout << "hdr: " << illum_settings.hdr << "| dynamicExp: " << (illum_settings.dynamicExposure ? "on" : "off") << "| bloom: " << (illum_settings.bloomState ? "on" : "off") << "| exposure: " << illum_settings.exposure << std::endl;
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -569,7 +571,7 @@ void processIlluminationInput(GLFWwindow* window, Illumination* illum, bool* ill
 
     if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS && !(*bloomKeyPressed))
     {
-        (*illum).bloom = !(*illum).bloom;
+        (*illum).bloomState = !(*illum).bloomState;
         *bloomKeyPressed = true;
     }
     if (glfwGetKey(window, GLFW_KEY_B) == GLFW_RELEASE)

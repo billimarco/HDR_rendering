@@ -1,1 +1,1 @@
- -lopengl32 "C:/Users/marco/OneDrive/Desktop/Computer Graphics/progetto/HDR_rendering/lib/libglfw3dll.a" -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32 
+ -lopengl32 C:/Desktop/HDR_rendering/lib/libglfw3dll.a -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32 
