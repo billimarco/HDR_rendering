@@ -1,14 +1,14 @@
 [
 {
-  "directory": "C:/Desktop/HDR_rendering/build",
-  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe  @CMakeFiles/HDRProject.dir/includes_CXX.rsp -g -std=gnu++17 -o CMakeFiles\\HDRProject.dir\\src\\hdr.cpp.obj -c C:\\Desktop\\HDR_rendering\\src\\hdr.cpp",
-  "file": "C:/Desktop/HDR_rendering/src/hdr.cpp",
+  "directory": "C:/Users/marco/OneDrive/Desktop/Computer Graphics/progetto/HDR_rendering/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe  @CMakeFiles/HDRProject.dir/includes_CXX.rsp -g -std=gnu++17 -o CMakeFiles\\HDRProject.dir\\src\\hdr.cpp.obj -c \"C:\\Users\\marco\\OneDrive\\Desktop\\Computer Graphics\\progetto\\HDR_rendering\\src\\hdr.cpp\"",
+  "file": "C:/Users/marco/OneDrive/Desktop/Computer Graphics/progetto/HDR_rendering/src/hdr.cpp",
   "output": "CMakeFiles/HDRProject.dir/src/hdr.cpp.obj"
 },
 {
-  "directory": "C:/Desktop/HDR_rendering/build",
-  "command": "C:\\msys64\\ucrt64\\bin\\gcc.exe  @CMakeFiles/HDRProject.dir/includes_C.rsp -g -o CMakeFiles\\HDRProject.dir\\src\\glad.c.obj -c C:\\Desktop\\HDR_rendering\\src\\glad.c",
-  "file": "C:/Desktop/HDR_rendering/src/glad.c",
+  "directory": "C:/Users/marco/OneDrive/Desktop/Computer Graphics/progetto/HDR_rendering/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\gcc.exe  @CMakeFiles/HDRProject.dir/includes_C.rsp -g -o CMakeFiles\\HDRProject.dir\\src\\glad.c.obj -c \"C:\\Users\\marco\\OneDrive\\Desktop\\Computer Graphics\\progetto\\HDR_rendering\\src\\glad.c\"",
+  "file": "C:/Users/marco/OneDrive/Desktop/Computer Graphics/progetto/HDR_rendering/src/glad.c",
   "output": "CMakeFiles/HDRProject.dir/src/glad.c.obj"
 }
 ]

@@ -53,10 +53,10 @@ RM = "C:\Program Files\CMake\bin\cmake.exe" -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = C:\Desktop\HDR_rendering
+CMAKE_SOURCE_DIR = "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering"
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = C:\Desktop\HDR_rendering\build
+CMAKE_BINARY_DIR = "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\build"
 
 #=============================================================================
 # Directory level rules for the build root directory
@@ -80,14 +80,14 @@ clean: CMakeFiles/HDRProject.dir/clean
 CMakeFiles/HDRProject.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\HDRProject.dir\build.make CMakeFiles/HDRProject.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\HDRProject.dir\build.make CMakeFiles/HDRProject.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Desktop\HDR_rendering\build\CMakeFiles --progress-num=1,2,3 "Built target HDRProject"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir="C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\build\CMakeFiles" --progress-num=1,2,3 "Built target HDRProject"
 .PHONY : CMakeFiles/HDRProject.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/HDRProject.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Desktop\HDR_rendering\build\CMakeFiles 3
+	$(CMAKE_COMMAND) -E cmake_progress_start "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\build\CMakeFiles" 3
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 CMakeFiles/HDRProject.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Desktop\HDR_rendering\build\CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\build\CMakeFiles" 0
 .PHONY : CMakeFiles/HDRProject.dir/rule
 
 # Convenience name for target.

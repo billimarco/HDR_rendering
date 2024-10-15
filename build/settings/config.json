@@ -18,7 +18,7 @@
         "avg_exposure": 2, 
         "max_exposure": 6,
         "inf_cap_luminance": 0.1,
-        "sup_cap_luminance": 0.9,
+        "sup_cap_luminance": 0.7,
         "bloom":{
             "state": true,
             "standard_deviation": 1.0,

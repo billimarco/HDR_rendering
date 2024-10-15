@@ -52,10 +52,10 @@ RM = "C:\Program Files\CMake\bin\cmake.exe" -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = C:\Desktop\HDR_rendering
+CMAKE_SOURCE_DIR = "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering"
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = C:\Desktop\HDR_rendering\build
+CMAKE_BINARY_DIR = "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\build"
 
 # Include any dependencies generated for this target.
 include CMakeFiles/HDRProject.dir/depend.make
@@ -70,33 +70,33 @@ include CMakeFiles/HDRProject.dir/flags.make
 
 CMakeFiles/HDRProject.dir/src/hdr.cpp.obj: CMakeFiles/HDRProject.dir/flags.make
 CMakeFiles/HDRProject.dir/src/hdr.cpp.obj: CMakeFiles/HDRProject.dir/includes_CXX.rsp
-CMakeFiles/HDRProject.dir/src/hdr.cpp.obj: C:/Desktop/HDR_rendering/src/hdr.cpp
+CMakeFiles/HDRProject.dir/src/hdr.cpp.obj: C:/Users/marco/OneDrive/Desktop/Computer\ Graphics/progetto/HDR_rendering/src/hdr.cpp
 CMakeFiles/HDRProject.dir/src/hdr.cpp.obj: CMakeFiles/HDRProject.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Desktop\HDR_rendering\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/HDRProject.dir/src/hdr.cpp.obj"
-	C:\msys64\ucrt64\bin\g++.exe $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/HDRProject.dir/src/hdr.cpp.obj -MF CMakeFiles\HDRProject.dir\src\hdr.cpp.obj.d -o CMakeFiles\HDRProject.dir\src\hdr.cpp.obj -c C:\Desktop\HDR_rendering\src\hdr.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir="C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\build\CMakeFiles" --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/HDRProject.dir/src/hdr.cpp.obj"
+	C:\msys64\ucrt64\bin\g++.exe $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/HDRProject.dir/src/hdr.cpp.obj -MF CMakeFiles\HDRProject.dir\src\hdr.cpp.obj.d -o CMakeFiles\HDRProject.dir\src\hdr.cpp.obj -c "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\src\hdr.cpp"
 
 CMakeFiles/HDRProject.dir/src/hdr.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/HDRProject.dir/src/hdr.cpp.i"
-	C:\msys64\ucrt64\bin\g++.exe $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E C:\Desktop\HDR_rendering\src\hdr.cpp > CMakeFiles\HDRProject.dir\src\hdr.cpp.i
+	C:\msys64\ucrt64\bin\g++.exe $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\src\hdr.cpp" > CMakeFiles\HDRProject.dir\src\hdr.cpp.i
 
 CMakeFiles/HDRProject.dir/src/hdr.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/HDRProject.dir/src/hdr.cpp.s"
-	C:\msys64\ucrt64\bin\g++.exe $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S C:\Desktop\HDR_rendering\src\hdr.cpp -o CMakeFiles\HDRProject.dir\src\hdr.cpp.s
+	C:\msys64\ucrt64\bin\g++.exe $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\src\hdr.cpp" -o CMakeFiles\HDRProject.dir\src\hdr.cpp.s
 
 CMakeFiles/HDRProject.dir/src/glad.c.obj: CMakeFiles/HDRProject.dir/flags.make
 CMakeFiles/HDRProject.dir/src/glad.c.obj: CMakeFiles/HDRProject.dir/includes_C.rsp
-CMakeFiles/HDRProject.dir/src/glad.c.obj: C:/Desktop/HDR_rendering/src/glad.c
+CMakeFiles/HDRProject.dir/src/glad.c.obj: C:/Users/marco/OneDrive/Desktop/Computer\ Graphics/progetto/HDR_rendering/src/glad.c
 CMakeFiles/HDRProject.dir/src/glad.c.obj: CMakeFiles/HDRProject.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Desktop\HDR_rendering\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building C object CMakeFiles/HDRProject.dir/src/glad.c.obj"
-	C:\msys64\ucrt64\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/HDRProject.dir/src/glad.c.obj -MF CMakeFiles\HDRProject.dir\src\glad.c.obj.d -o CMakeFiles\HDRProject.dir\src\glad.c.obj -c C:\Desktop\HDR_rendering\src\glad.c
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir="C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\build\CMakeFiles" --progress-num=$(CMAKE_PROGRESS_2) "Building C object CMakeFiles/HDRProject.dir/src/glad.c.obj"
+	C:\msys64\ucrt64\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/HDRProject.dir/src/glad.c.obj -MF CMakeFiles\HDRProject.dir\src\glad.c.obj.d -o CMakeFiles\HDRProject.dir\src\glad.c.obj -c "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\src\glad.c"
 
 CMakeFiles/HDRProject.dir/src/glad.c.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/HDRProject.dir/src/glad.c.i"
-	C:\msys64\ucrt64\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E C:\Desktop\HDR_rendering\src\glad.c > CMakeFiles\HDRProject.dir\src\glad.c.i
+	C:\msys64\ucrt64\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\src\glad.c" > CMakeFiles\HDRProject.dir\src\glad.c.i
 
 CMakeFiles/HDRProject.dir/src/glad.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/HDRProject.dir/src/glad.c.s"
-	C:\msys64\ucrt64\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S C:\Desktop\HDR_rendering\src\glad.c -o CMakeFiles\HDRProject.dir\src\glad.c.s
+	C:\msys64\ucrt64\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\src\glad.c" -o CMakeFiles\HDRProject.dir\src\glad.c.s
 
 # Object files for target HDRProject
 HDRProject_OBJECTS = \
@@ -109,11 +109,11 @@ HDRProject_EXTERNAL_OBJECTS =
 HDRProject.exe: CMakeFiles/HDRProject.dir/src/hdr.cpp.obj
 HDRProject.exe: CMakeFiles/HDRProject.dir/src/glad.c.obj
 HDRProject.exe: CMakeFiles/HDRProject.dir/build.make
-HDRProject.exe: C:/Desktop/HDR_rendering/lib/libglfw3dll.a
+HDRProject.exe: C:/Users/marco/OneDrive/Desktop/Computer\ Graphics/progetto/HDR_rendering/lib/libglfw3dll.a
 HDRProject.exe: CMakeFiles/HDRProject.dir/linkLibs.rsp
 HDRProject.exe: CMakeFiles/HDRProject.dir/objects1.rsp
 HDRProject.exe: CMakeFiles/HDRProject.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=C:\Desktop\HDR_rendering\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX executable HDRProject.exe"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir="C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\build\CMakeFiles" --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX executable HDRProject.exe"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles\HDRProject.dir\link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
@@ -125,6 +125,6 @@ CMakeFiles/HDRProject.dir/clean:
 .PHONY : CMakeFiles/HDRProject.dir/clean
 
 CMakeFiles/HDRProject.dir/depend:
-	$(CMAKE_COMMAND) -E cmake_depends "MinGW Makefiles" C:\Desktop\HDR_rendering C:\Desktop\HDR_rendering C:\Desktop\HDR_rendering\build C:\Desktop\HDR_rendering\build C:\Desktop\HDR_rendering\build\CMakeFiles\HDRProject.dir\DependInfo.cmake "--color=$(COLOR)"
+	$(CMAKE_COMMAND) -E cmake_depends "MinGW Makefiles" "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering" "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering" "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\build" "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\build" "C:\Users\marco\OneDrive\Desktop\Computer Graphics\progetto\HDR_rendering\build\CMakeFiles\HDRProject.dir\DependInfo.cmake" "--color=$(COLOR)"
 .PHONY : CMakeFiles/HDRProject.dir/depend
 
