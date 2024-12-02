@@ -36,11 +36,10 @@ void main()
             break;
         case 3://Drago Tone-Mapping
             float bias = 0.85;
-            float c = 300*0.01; //Real Max Luminance of the screen * 0.01
-            float L_wmax = maxPixelScreenLuminance*exposure/avgPixelScreenLuminance;
-            hdrColor *= exposure;
-            float L_w = dot(hdrColor, vec3(0.2126, 0.7152, 0.0722)); // Luminance of the pixel
-            float L_d = c * log(1.0 + L_w) / log(2.0 + 8.0 * pow(L_w/ L_wmax, log(bias)/log(0.5))) * log10(L_wmax+1);
+            float L_dmax = 100; //Max Luminance of the screen
+            float L_wmax = maxPixelScreenLuminance*exposure/avgPixelScreenLuminance; //Max Luminance of the scene scaled by World Adaptation Luminance
+            float L_w = dot(hdrColor*exposure, vec3(0.2126, 0.7152, 0.0722)); // Luminance of the pixel before Tone-Mapping (Y compenent of XYZ color map)
+            float L_d = (L_dmax * 0.01) * log(1.0 + L_w) / (log10(L_wmax+1) * log(2.0 + 8.0 * pow(L_w/ L_wmax, log(bias)/log(0.5)))); // Luminance of the pixel after Tone-Mapping
             result = hdrColor * (L_d / (L_w + 1e-6));  // Avoid division by zero
             result = pow(result, vec3(1.0 / gamma));
             result = clamp(result, 0.0, 1.0);
