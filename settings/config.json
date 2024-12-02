@@ -1,7 +1,7 @@
 {
     "window": {
-        "width": 1200,
-        "height": 800
+        "width": 1280,
+        "height": 720
     },
     "camera": {
         "x": 0.0,
@@ -9,9 +9,9 @@
         "z": 5.0
     },
     "illumination": {
-        "type": 1,
+        "type": 3,
         "exposure": 1,
-        "dynamic_exp": false,
+        "dynamic_exp": true,
         "adaptation_speed": 0.3,
         "max_change": 0.005,
         "min_exposure": 1,
