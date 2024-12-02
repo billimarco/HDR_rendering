@@ -1,0 +1,16 @@
+# Ignora la cartella build
+build/
+
+# Ignora la cartella .vscode
+.vscode/
+
+# Altri file o directory comuni da ignorare
+node_modules/
+dist/
+*.log
+*.tmp
+.DS_Store
+*.swp
+*.bak
+.idea/
+*.env

@@ -1,3 +1,0 @@
-C:/Desktop/HDR_rendering/build/CMakeFiles/HDRProject.dir
-C:/Desktop/HDR_rendering/build/CMakeFiles/edit_cache.dir
-C:/Desktop/HDR_rendering/build/CMakeFiles/rebuild_cache.dir
